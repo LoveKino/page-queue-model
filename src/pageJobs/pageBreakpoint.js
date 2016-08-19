@@ -1,6 +1,11 @@
 'use strict';
 
-const local = (typeof window === 'object' && window && window.localStorage) || {};
+let local = null;
+
+try {
+    local = (typeof window === 'object' && window && window.localStorage) || {};
+} catch(e) { // eslint-disable-line
+}
 
 let defMemory = {
     set: (key, value) => {
