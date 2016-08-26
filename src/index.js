@@ -11,6 +11,7 @@ module.exports = (fragments, {
     winId,
     rootId,
     indexKey,
+    storeKey,
     sandbox,
     call,
     memory,
@@ -26,7 +27,8 @@ module.exports = (fragments, {
         rootId,
         sandbox,
         call,
-        memory
+        memory,
+        storeKey
     })).then((opts) => {
         handleOpts && handleOpts(opts);
 

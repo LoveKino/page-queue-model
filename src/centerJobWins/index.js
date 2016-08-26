@@ -12,8 +12,6 @@ module.exports = ({
     call,
     memory
 }) => {
-    storeKey = storeKey || `${rootId}-node-model-info`;
-
     let setJob = (doJob) => sandbox.doJob = doJob;
 
     let ret = {
