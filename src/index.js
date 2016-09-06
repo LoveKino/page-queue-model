@@ -6,6 +6,10 @@ let pageJobs = require('./pageJobs');
 
 let defMemory = require('./defMemory');
 
+let {
+    reduce
+} = require('bolzano');
+
 let id = v => v;
 
 let getStore = (memory, key) => {
@@ -24,53 +28,70 @@ let getStore = (memory, key) => {
 module.exports = (fragments, {
     winId,
     rootId,
-    indexKey,
-    storeKey,
+    prefix,
     sandbox,
     call,
-    runItem,
-    getWinId,
-
-    handleFragmentWrapper = id, memory = defMemory
+    memory = defMemory
 }) => {
-    let workerStore = getStore(memory, storeKey);
-    let pageJobStore = getStore(memory, indexKey);
+    let workerStore = getStore(memory, prefix + '-store');
+    let fragmentJobStore = getStore(memory, prefix + '-fragment');
+    let itemJobStore = getStore(memory, prefix + '-item');
 
-    let handleFragment = handleFragmentWrapper(({
-        fragment, fragmentInfo
-    }) => {
-        return pageJobs('action', fragment, pageJobStore, (action, actionInfo) => {
-            return runItem(action, actionInfo, fragmentInfo);
-        });
+    let getJobOrder = () => Promise.all([fragmentJobStore.get(), itemJobStore.get()]).then(([frgInfo, itemInfo]) => {
+        if (!fragments.length) return -1;
+        let frgIndex = frgInfo ? frgInfo.jobIndex : -1;
+        let itemIndex = itemInfo ? itemInfo.jobIndex : -1;
+        let subs = fragments.slice(0, frgIndex + 1);
+        let prevSum = reduce(subs, (prev, cur) => prev + cur.length, 0);
+        // special case: just finished all
+        if (frgIndex === fragments.length - 1 && itemIndex === fragments[fragments.length - 1].length - 1) {
+            return prevSum;
+        }
+        return prevSum + itemIndex;
     });
 
     // init window as a worker
     // center send job to nodes
-    return initWindowWorker(handleFragment, {
-        winId,
-        rootId,
-        sandbox,
-        call,
-        workerStore
-    }).then(({
-        type,
-        sendJob,
-        windows
-    }) => {
-        if (type === 'center') {
-            // run fragments as jobs
-            return pageJobs('fragment', fragments, pageJobStore, (fragment, fragmentInfo) => {
-                // find which window to play fragments
-                return Promise.resolve(
-                    getWinId(fragment, windows, fragments)
-                ).then((winId) => {
-                    let args = [{
-                        fragment, fragmentInfo
-                    }];
-                    winId && args.unshift(winId);
-                    return sendJob.apply(undefined, args);
-                });
+    let start = (runItem, getWinId, handleFragmentWrapper = id) => {
+        let handleFragment = handleFragmentWrapper(({
+            fragment, fragmentInfo
+        }) => {
+            return pageJobs(fragment, itemJobStore, (action, actionInfo) => {
+                return runItem(action, actionInfo, fragmentInfo);
             });
-        }
-    });
+        });
+
+        return initWindowWorker(handleFragment, {
+            winId,
+            rootId,
+            sandbox,
+            call,
+            workerStore
+        }).then(({
+            type,
+            sendJob,
+            windows
+        }) => {
+            if (type === 'center') {
+                // run fragments as jobs
+                return pageJobs(fragments, fragmentJobStore, (fragment, fragmentInfo) => {
+                    // find which window to play fragments
+                    return Promise.resolve(
+                        getWinId(fragment, windows, fragments)
+                    ).then((winId) => {
+                        let args = [{
+                            fragment, fragmentInfo
+                        }];
+                        winId && args.unshift(winId);
+                        return sendJob.apply(undefined, args);
+                    });
+                });
+            }
+        });
+    };
+
+    return {
+        start,
+        getJobOrder
+    };
 };

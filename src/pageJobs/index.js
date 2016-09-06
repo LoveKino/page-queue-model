@@ -2,29 +2,26 @@
 
 // continue job at the break point
 // refresh page will cause the break
-// !important: run this function only once for the same jobName
-let continueAtBreakPoint = (store, jobName, handle) => {
+let continueAtBreakPoint = (store, handle) => {
     // get break point
     /**
      *
      * breakInfo = {
-     *      [jobName]: {
-     *          jobIndex,
-     *          continuesTimes
-     *      }
+     *      jobIndex,
+     *      continuesTimes
      * }
      */
-    return store.get().then((breakInfo = {}) => {
+    return store.get().then((breakInfo) => {
         let getCurBreakInfo = () => {
-            let curBreakInfo = breakInfo[jobName] = breakInfo[jobName] || {
-                jobIndex: 0,
+            let curBreakInfo = breakInfo = breakInfo || {
+                jobIndex: -1,
                 continueTimes: 0 // refresh times
             };
             return curBreakInfo;
         };
 
         let upgradeContinueTimes = () => {
-            let curBreakInfo = getCurBreakInfo(jobName);
+            let curBreakInfo = getCurBreakInfo();
             curBreakInfo.continueTimes++;
         };
 
@@ -49,13 +46,13 @@ let continueAtBreakPoint = (store, jobName, handle) => {
  *
  * if rehresh happend, continue the job from break point
  */
-module.exports = (jobName, jobs = [], store, handle) => {
+module.exports = (jobs = [], store, handle) => {
     if (typeof handle !== 'function') {
         throw new TypeError('handle must be a promise function');
     }
 
     return new Promise((resolve, reject) => {
-        continueAtBreakPoint(store, jobName, ({
+        continueAtBreakPoint(store, ({
             savePoint,
             getCurBreakInfo
         }) => {
@@ -63,16 +60,15 @@ module.exports = (jobName, jobs = [], store, handle) => {
 
             let handleJob = (flag) => {
                 // finished all job already
-                if (curBreakInfo.jobIndex >= jobs.length) {
+                if (curBreakInfo.jobIndex >= jobs.length - 1) {
                     resolve(curBreakInfo);
                 } else {
-                    let job = jobs[curBreakInfo.jobIndex];
+                    let job = jobs[curBreakInfo.jobIndex + 1];
 
                     Promise.resolve(handle(job, {
                         jobIndex: curBreakInfo.jobIndex,
                         continueTimes: curBreakInfo.continueTimes,
                         jobs,
-                        jobName,
                         flag
                     })).then(() => {
                         // finished a job
