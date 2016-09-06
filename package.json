@@ -21,5 +21,7 @@
         "url": "https://github.com/LoveKino/page-queue-model/issues"
     },
     "homepage": "https://github.com/LoveKino/page-queue-model#readme",
-    "link_dependencies": {}
+    "link_dependencies": {
+        "bolzano": "~0.0.1"
+    }
 }
