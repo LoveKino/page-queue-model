@@ -2,7 +2,9 @@
 
 let initWindowWorker = require('./initWindowWorker');
 
-let fragmentsRunner = require('./fragmentsRunner');
+let pageJobs = require('./pageJobs');
+
+let defMemory = require('./defMemory');
 
 let id = v => v;
 
@@ -26,52 +28,49 @@ module.exports = (fragments, {
     storeKey,
     sandbox,
     call,
-    memory,
     runItem,
     getWinId,
-    handleFragmentWrapper = id
-}) => {
-    let {
-        runFragment, start
-    } = fragmentsRunner(memory, indexKey, fragments);
 
-    let handleFragment = (fragment) => {
-        return runFragment(fragment, (action, info, refreshFlag) => {
-            return runItem(action, info, refreshFlag, fragment);
+    handleFragmentWrapper = id, memory = defMemory
+}) => {
+    let workerStore = getStore(memory, storeKey);
+    let pageJobStore = getStore(memory, indexKey);
+
+    let handleFragment = handleFragmentWrapper(({
+        fragment, fragmentInfo
+    }) => {
+        return pageJobs('action', fragment, pageJobStore, (action, actionInfo) => {
+            return runItem(action, actionInfo, fragmentInfo);
         });
-    };
-    handleFragment = handleFragmentWrapper(handleFragment);
+    });
 
     // init window as a worker
     // center send job to nodes
-    return Promise.resolve(initWindowWorker(handleFragment, {
+    return initWindowWorker(handleFragment, {
         winId,
         rootId,
         sandbox,
         call,
-        workerStore: getStore(memory, storeKey)
-    })).then(({
+        workerStore
+    }).then(({
         type,
         sendJob,
         windows
     }) => {
-        let dispatch = (fragment) => {
-            // find which window to play fragments
-            return Promise.resolve(
-                getWinId(fragment, windows, fragments)
-            ).then((winId) => {
-                if (!winId) { // root
-                    return sendJob(fragment);
-                } else {
-                    return sendJob(winId, fragment);
-                }
-            });
-        };
-
-        // define job
-        // dispatch fragments
         if (type === 'center') {
-            return start(dispatch);
+            // run fragments as jobs
+            return pageJobs('fragment', fragments, pageJobStore, (fragment, fragmentInfo) => {
+                // find which window to play fragments
+                return Promise.resolve(
+                    getWinId(fragment, windows, fragments)
+                ).then((winId) => {
+                    let args = [{
+                        fragment, fragmentInfo
+                    }];
+                    winId && args.unshift(winId);
+                    return sendJob.apply(undefined, args);
+                });
+            });
         }
     });
 };

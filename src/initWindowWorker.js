@@ -29,6 +29,20 @@ module.exports = (job, {
         }
     };
 
+    let sendJober = (call, sandbox, data) => (...args) => {
+        if (args.length <= 1) {
+            // call center to do a job
+            return Promise.resolve(sandbox.doJob(args[0]));
+        } else {
+            if (!contain(data.windows, args[0])) {
+                throw new Error('missing window');
+            }
+            return call('callOtherWindow', [args[0],
+                'doJob', [args[1]]
+            ]);
+        }
+    };
+
     if (winId === rootId) {
         // current window is center point
         return workerStore.get().then((data) => {
@@ -47,24 +61,10 @@ module.exports = (job, {
     } else {
         // current window is a none-center point
         // send window info to center
-        call('callOtherWindow', [rootId, 'connect', [winId]]);
-
-        return {
-            type: 'edge'
-        };
-    }
-};
-
-let sendJober = (call, sandbox, data) => (...args) => {
-    if (args.length <= 1) {
-        // call center to do a job
-        return Promise.resolve(sandbox.doJob(args[0]));
-    } else {
-        if (!contain(data.windows, args[0])) {
-            throw new Error('missing window');
-        }
-        return call('callOtherWindow', [args[0],
-            'doJob', [args[1]]
-        ]);
+        return call('callOtherWindow', [rootId, 'connect', [winId]]).then(() => {
+            return {
+                type: 'edge'
+            };
+        });
     }
 };

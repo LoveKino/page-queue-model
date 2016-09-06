@@ -1,27 +1,65 @@
 'use strict';
 
-let pageBreakPoint = require('./pageBreakpoint');
+// continue job at the break point
+// refresh page will cause the break
+// !important: run this function only once for the same jobName
+let continueAtBreakPoint = (store, jobName, handle) => {
+    // get break point
+    /**
+     *
+     * breakInfo = {
+     *      [jobName]: {
+     *          jobIndex,
+     *          continuesTimes
+     *      }
+     * }
+     */
+    return store.get().then((breakInfo = {}) => {
+        let getCurBreakInfo = () => {
+            let curBreakInfo = breakInfo[jobName] = breakInfo[jobName] || {
+                jobIndex: 0,
+                continueTimes: 0 // refresh times
+            };
+            return curBreakInfo;
+        };
+
+        let upgradeContinueTimes = () => {
+            let curBreakInfo = getCurBreakInfo(jobName);
+            curBreakInfo.continueTimes++;
+        };
+
+        let savePoint = () => {
+            return store.set(breakInfo);
+        };
+
+        // just jump to this page, upgrade the continue times
+        upgradeContinueTimes();
+        // savePoint
+        savePoint();
+
+        handle({
+            savePoint,
+            getCurBreakInfo
+        });
+    });
+};
 
 /**
  * deal a couple of jobs
+ *
+ * if rehresh happend, continue the job from break point
  */
-module.exports = (memory, storeKey, jobName, jobs = [], handle) => {
+module.exports = (jobName, jobs = [], store, handle) => {
     if (typeof handle !== 'function') {
         throw new TypeError('handle must be a promise function');
     }
-    let {
-        continueAtBreakPoint, setBreakPoint
-    } = pageBreakPoint(memory, storeKey);
 
     return new Promise((resolve, reject) => {
-        continueAtBreakPoint((breakInfo) => {
-            breakInfo = breakInfo || {};
-
-            let curBreakInfo = getCurBreakInfo(breakInfo, jobName);
-            // just jump to this page, upgrade the continue times
-            upgradeContinueTimes(curBreakInfo);
-            // save
-            setBreakPoint(breakInfo);
+        continueAtBreakPoint(store, jobName, ({
+            savePoint,
+            getCurBreakInfo
+        }) => {
+            let curBreakInfo = getCurBreakInfo();
 
             let handleJob = (flag) => {
                 // finished all job already
@@ -29,33 +67,26 @@ module.exports = (memory, storeKey, jobName, jobs = [], handle) => {
                     resolve(curBreakInfo);
                 } else {
                     let job = jobs[curBreakInfo.jobIndex];
-                    Promise.resolve(handle(job, curBreakInfo, flag)).then(() => {
+
+                    Promise.resolve(handle(job, {
+                        jobIndex: curBreakInfo.jobIndex,
+                        continueTimes: curBreakInfo.continueTimes,
+                        jobs,
+                        jobName,
+                        flag
+                    })).then(() => {
                         // finished a job
                         curBreakInfo.jobIndex++;
-                        //save the breakpoint
-                        setBreakPoint(breakInfo);
+                        //savePoint the breakpoint
+                        savePoint();
                         // next job
                         handleJob(false);
                     }).catch(reject);
                 }
             };
 
+            // first job: passing true
             handleJob(true);
         });
     });
-};
-
-let getCurBreakInfo = (breakInfo, jobName) => {
-    let curBreakInfo = breakInfo[jobName] = breakInfo[jobName] || {
-        jobIndex: 0
-    };
-    return curBreakInfo;
-};
-
-let upgradeContinueTimes = (curBreakInfo) => {
-    if (curBreakInfo.continueTimes === undefined) {
-        curBreakInfo.continueTimes = 0;
-    } else {
-        curBreakInfo.continueTimes++;
-    }
 };
