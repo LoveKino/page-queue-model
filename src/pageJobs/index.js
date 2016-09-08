@@ -61,6 +61,7 @@ module.exports = (jobs = [], store, handle) => {
             let handleJob = (flag) => {
                 // finished all job already
                 if (curBreakInfo.jobIndex >= jobs.length - 1) {
+                    // TODO clear objects
                     resolve(curBreakInfo);
                 } else {
                     let job = jobs[curBreakInfo.jobIndex + 1];
